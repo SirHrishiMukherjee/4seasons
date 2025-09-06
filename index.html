@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Heliocentric Seasons — Interactive Canvas</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #111831;
+      --ink: #e6eefc;
+      --muted: #9bb0d3;
+      --accent: #8ad1ff;
+      --spring: rgba(120, 220, 120, 0.35);
+      --summer: rgba(255, 220, 100, 0.35);
+      --autumn: rgba(255, 150, 60, 0.35);
+      --winter: rgba(140, 180, 255, 0.35);
+      --grid: rgba(255,255,255,0.06);
+    }
+    html, body { height: 100%; margin: 0; background: var(--bg); color: var(--ink); font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, Helvetica, Arial, sans-serif; }
+    header { padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(0,0,0,0)); }
+    h1 { font-size: 18px; letter-spacing: 0.5px; margin: 0; font-weight: 600; color: var(--ink); }
+    .sub { color: var(--muted); font-size: 12px; }
+    .wrap { display: grid; grid-template-columns: 320px 1fr; gap: 14px; height: calc(100% - 58px); padding: 12px; box-sizing: border-box; }
+    .panel { background: var(--panel); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 14px; box-shadow: 0 8px 30px rgba(0,0,0,0.25) inset, 0 2px 12px rgba(0,0,0,0.25); }
+    .panel h2 { margin: 4px 0 8px; font-size: 14px; font-weight: 600; color: var(--ink); }
+    .control { margin: 12px 0; }
+    .control label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    input[type="range"] { width: 100%; }
+    .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    button { background: #1a2447; color: var(--ink); border: 1px solid rgba(255,255,255,0.12); padding: 8px 12px; border-radius: 12px; font-weight: 600; cursor: pointer; transition: transform .08s ease, background .25s ease; }
+    button:hover { transform: translateY(-1px); }
+    button.active { background: #243063; border-color: var(--accent); }
+    .legend { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+    .tag { display:flex; align-items:center; gap:8px; font-size:12px; color: var(--muted); }
+    .dot { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.5); }
+    .spring { background: var(--spring); }
+    .summer { background: var(--summer); }
+    .autumn { background: var(--autumn); }
+    .winter { background: var(--winter); }
+    .canvasWrap { position: relative; }
+    canvas { width: 100%; height: 100%; display: block; background: radial-gradient(1200px 600px at 30% 30%, rgba(90,130,255,0.15), rgba(0,0,0,0)); border-radius: 14px; border: 1px solid rgba(255,255,255,0.08); }
+    .readout { position: absolute; left: 12px; bottom: 12px; background: rgba(0,0,0,0.45); padding: 8px 10px; border-radius: 10px; font-size: 12px; color: var(--ink); backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,0.08); }
+    .note { font-size: 11px; color: var(--muted); line-height: 1.4; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Heliocentric Orbit — Four Seasons</h1>
+      <div class="sub">Section-wise displacement of Earth around the Sun (Northern Hemisphere naming)</div>
+    </div>
+    <div class="sub">Simulon · Orbital Canvas</div>
+  </header>
+
+  <div class="wrap">
+    <aside class="panel">
+      <h2>Controls</h2>
+      <div class="control">
+        <label for="day">Day of Year (<span id="dayVal">0</span>/365)</label>
+        <input id="day" type="range" min="0" max="365" step="1" value="250" />
+      </div>
+      <div class="row">
+        <button id="play">▶ Play</button>
+        <button id="pause">⏸ Pause</button>
+        <button id="reset">↺ Reset</button>
+      </div>
+      <div class="control">
+        <label>Jump to Season</label>
+        <div class="row">
+          <button class="seasonBtn" data-s="spring">🌱 Spring</button>
+          <button class="seasonBtn" data-s="summer">☀️ Summer</button>
+          <button class="seasonBtn" data-s="autumn">🍂 Fall</button>
+          <button class="seasonBtn" data-s="winter">❄️ Winter</button>
+        </div>
+      </div>
+      <div class="legend">
+        <div class="tag"><span class="dot spring"></span> Spring (Vernal Eq.)</div>
+        <div class="tag"><span class="dot summer"></span> Summer (Jun Solstice)</div>
+        <div class="tag"><span class="dot autumn"></span> Fall (Autumnal Eq.)</div>
+        <div class="tag"><span class="dot winter"></span> Winter (Dec Solstice)</div>
+      </div>
+      <div class="control">
+        <h2>Notes</h2>
+        <p class="note">Ellipse is exaggerated for clarity; the real Earth's orbital eccentricity (~0.0167) is nearly circular. Season boundaries are quarter-arc segments referenced to the March equinox.</p>
+      </div>
+    </aside>
+
+    <main class="canvasWrap">
+      <canvas id="orb" width="1200" height="800" aria-label="Heliocentric orbit with seasonal sections" role="img"></canvas>
+      <div class="readout" id="readout">—</div>
+    </main>
+  </div>
+
+  <script>
+    // ====== Canvas & Scene Setup ======
+    const canvas = document.getElementById('orb');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const cx = W * 0.55;  // center of ellipse frame (visual)
+    const cy = H * 0.55;
+
+    // Ellipse parameters (exaggerated slightly for visibility)
+    const a = 260;   // semi-major axis
+    const b = 230;   // semi-minor axis
+    const c = Math.sqrt(Math.max(a*a - b*b, 0)); // focus distance
+    const sun = { x: cx - c, y: cy }; // Place Sun at left focus
+
+    // Season arcs: using angle theta on parametric ellipse (cos, sin) starting at Vernal Equinox (theta = 0)
+    // By convention here: theta=0 at +x direction from ellipse center, increasing CCW. This maps to Vernal Equinox.
+    const SECTIONS = [
+      { key: 'spring',  label: 'Spring', start: 0 * Math.PI/2, end: 1 * Math.PI/2, color: getCSS('--spring') },
+      { key: 'summer',  label: 'Summer', start: 1 * Math.PI/2, end: 2 * Math.PI/2, color: getCSS('--summer') },
+      { key: 'autumn',  label: 'Fall',   start: 2 * Math.PI/2, end: 3 * Math.PI/2, color: getCSS('--autumn') },
+      { key: 'winter',  label: 'Winter', start: 3 * Math.PI/2, end: 4 * Math.PI/2, color: getCSS('--winter') },
+    ];
+
+    function getCSS(varName){ return getComputedStyle(document.documentElement).getPropertyValue(varName).trim(); }
+
+    // ====== Utility: Parametric ellipse point from angle theta ======
+    function ellipsePoint(theta){
+      // Parametric angle relative to ellipse center, Sun at focus (cx - c, cy)
+      const x = cx + a * Math.cos(theta);
+      const y = cy + b * Math.sin(theta);
+      return { x, y };
+    }
+
+    // ====== Rendering ======
+    function drawGrid(){
+      ctx.save();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = getCSS('--grid');
+      const step = 50;
+      for(let x = step/2; x < W; x += step){
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+      }
+      for(let y = step/2; y < H; y += step){
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawSun(){
+      const r = 28;
+      const grad = ctx.createRadialGradient(sun.x, sun.y, 2, sun.x, sun.y, 50);
+      grad.addColorStop(0, '#fff6d1');
+      grad.addColorStop(1, 'rgba(255, 200, 60, 0.05)');
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(sun.x, sun.y, 60, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ffd35a';
+      ctx.beginPath(); ctx.arc(sun.x, sun.y, r, 0, Math.PI * 2); ctx.fill();
+      // subtle glow
+      ctx.strokeStyle = 'rgba(255, 211, 90, 0.4)';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(sun.x, sun.y, r+6, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    function drawEllipse(){
+      // draw the orbit outline
+      ctx.save();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(200,220,255,0.6)';
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      for(let t=0; t<=1.0001; t+=0.01){
+        const th = t * Math.PI * 2;
+        const p = ellipsePoint(th);
+        if(t===0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+      }
+      ctx.closePath();
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    function drawSeasonSection(start, end, color){
+      // Render a thick translucent ribbon along ellipse between start and end angles
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 14; // ribbon thickness
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      const steps = 120;
+      for(let i=0;i<=steps;i++){
+        const u = i/steps; const th = start + (end - start)*u;
+        const p = ellipsePoint(th);
+        if(i===0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawBoundTick(theta, label){
+      const p = ellipsePoint(theta);
+      // radial tick normal-ish: approximate vector to focus -> point then outward normal
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+      ctx.lineWidth = 1.5;
+      const dir = Math.atan2(b*Math.cos(theta), -a*Math.sin(theta)); // normal angle approximation
+      const L = 18;
+      const x1 = p.x + Math.cos(dir) * L;
+      const y1 = p.y + Math.sin(dir) * L;
+      const x2 = p.x - Math.cos(dir) * L;
+      const y2 = p.y - Math.sin(dir) * L;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      ctx.fillStyle = 'rgba(230,238,252,0.9)';
+      ctx.font = '12px system-ui, Segoe UI, Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(label, x1 + Math.cos(dir)*18, y1 + Math.sin(dir)*18);
+      ctx.restore();
+    }
+
+    function drawEarth(theta){
+      const p = ellipsePoint(theta);
+      // orbit trail (short)
+      ctx.save();
+      ctx.strokeStyle = 'rgba(160,200,255,0.25)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for(let i=0;i<=64;i++){
+        const u = i/64; const th = theta - u*0.25; // short arc behind
+        const q = ellipsePoint(th);
+        if(i===0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y);
+      }
+      ctx.stroke();
+      ctx.restore();
+
+      // Earth
+      const grad = ctx.createRadialGradient(p.x-4, p.y-4, 1, p.x, p.y, 9);
+      grad.addColorStop(0, '#bfe6ff');
+      grad.addColorStop(1, '#2b72ff');
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, Math.PI*2); ctx.fill();
+
+      // Earth-Sun line
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(sun.x, sun.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+      ctx.restore();
+    }
+
+    function seasonFromTheta(theta){
+      const t = (theta % (Math.PI*2) + Math.PI*2) % (Math.PI*2);
+      if (t < Math.PI/2) return 'spring';
+      if (t < Math.PI)   return 'summer';
+      if (t < 3*Math.PI/2) return 'autumn';
+      return 'winter';
+    }
+
+    function labelForSeason(k){
+      return {spring:'Spring', summer:'Summer', autumn:'Fall', winter:'Winter'}[k] || k;
+    }
+
+    // Equinoxes/Solstices labels (theta at 0, 90, 180, 270 degrees)
+    const BOUND_LABELS = ['Vernal Equinox', 'June Solstice', 'Autumnal Equinox', 'December Solstice'];
+
+    // ====== State & Animation ======
+    const daySlider = document.getElementById('day');
+    const dayVal = document.getElementById('dayVal');
+    const readout = document.getElementById('readout');
+    let playing = false;
+    let theta = (parseInt(daySlider.value, 10) / 365) * Math.PI * 2; // initial angle
+
+    function updateReadout(){
+      const k = seasonFromTheta(theta);
+      const doy = Math.round(((theta % (Math.PI*2) + Math.PI*2)%(Math.PI*2)) / (Math.PI*2) * 365);
+      readout.textContent = `${labelForSeason(k)} · θ=${(theta%(Math.PI*2)).toFixed(2)} rad · Day ${doy}/365`;
+      dayVal.textContent = doy;
+
+      // set active class on season buttons
+      document.querySelectorAll('.seasonBtn').forEach(btn => btn.classList.toggle('active', btn.dataset.s === k));
+    }
+
+    function render(){
+      ctx.clearRect(0,0,W,H);
+      drawGrid();
+
+      // season ribbons
+      SECTIONS.forEach(sec => drawSeasonSection(sec.start, sec.end, sec.color));
+
+      // orbit outline & Sun
+      drawEllipse();
+      drawSun();
+
+      // boundary ticks & labels
+      for(let i=0;i<4;i++){
+        drawBoundTick(i*Math.PI/2, BOUND_LABELS[i]);
+      }
+
+      // Earth
+      drawEarth(theta);
+
+      updateReadout();
+    }
+
+    function tick(){
+      if(playing){
+        theta += 0.0045; // animation speed (radians per frame)
+        daySlider.value = Math.round(((theta%(Math.PI*2)+Math.PI*2)%(Math.PI*2)) / (Math.PI*2) * 365);
+        render();
+        requestAnimationFrame(tick);
+      }
+    }
+
+    // ====== UI Events ======
+    daySlider.addEventListener('input', () => {
+      theta = (parseInt(daySlider.value, 10) / 365) * Math.PI * 2;
+      render();
+    });
+
+    document.getElementById('play').addEventListener('click', () => {
+      if(!playing){ playing = true; requestAnimationFrame(tick); }
+    });
+    document.getElementById('pause').addEventListener('click', () => { playing = false; });
+    document.getElementById('reset').addEventListener('click', () => {
+      playing = false; daySlider.value = 0; theta = 0; render();
+    });
+
+    document.querySelectorAll('.seasonBtn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const k = btn.dataset.s;
+        let targetTheta = 0;
+        if(k==='spring') targetTheta = Math.PI/4;      // mid-spring
+        if(k==='summer') targetTheta = 3*Math.PI/4;    // mid-summer
+        if(k==='autumn') targetTheta = 5*Math.PI/4;    // mid-fall
+        if(k==='winter') targetTheta = 7*Math.PI/4;    // mid-winter
+        theta = targetTheta;
+        daySlider.value = Math.round((targetTheta / (Math.PI*2)) * 365);
+        render();
+      });
+    });
+
+    // Initial render
+    render();
+  </script>
+</body>
+</html>
