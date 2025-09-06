@@ -40,6 +40,12 @@
     canvas { width: 100%; height: 100%; display: block; background: radial-gradient(1200px 600px at 30% 30%, rgba(90,130,255,0.15), rgba(0,0,0,0)); border-radius: 14px; border: 1px solid rgba(255,255,255,0.08); }
     .readout { position: absolute; left: 12px; bottom: 12px; background: rgba(0,0,0,0.45); padding: 8px 10px; border-radius: 10px; font-size: 12px; color: var(--ink); backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,0.08); }
     .note { font-size: 11px; color: var(--muted); line-height: 1.4; }
+  .calendar .month{background:#1c2130;border:1px solid #333;border-radius:10px;padding:10px;flex:1 0 calc(33.3% - 12px);min-width:220px}
+    .calendar .month h3{margin-top:0;font-size:14px;text-align:center;color:#8ad1ff}
+    .calendar .days{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}
+    .calendar .day{background:#2e354d;text-align:center;padding:5px;border-radius:4px;cursor:pointer;font-size:12px}
+    .calendar .day:hover{background:#3e6cf5}
+    .calendar .day.selected{outline:2px solid #8ad1ff; outline-offset:1px}
   </style>
 </head>
 <body>
@@ -107,6 +113,18 @@
         <h2>Notes</h2>
         <p class="note">Mars has four astronomical seasons (uneven lengths) due to axial tilt and higher orbital eccentricity. The co‑orbital belt uses a nominal 540‑day year with a recommended <strong>six</strong> seasons (6×90 under 1080‑basis → 180‑day sections on orbital basis). Toggle 4–6 as desired.</p>
         <p class="note">1080‑day calendar = 36×30; Normalized Gregorian = 12×90. In orbital basis, Earth=365, Mars=687, Co‑orbital=540.</p>
+      </div>
+          <div class="panel" style="margin-top:12px; max-height:48vh; overflow:auto;">
+        <h2>1080‑Day Multiplanetary Calendar</h2>
+        <div class="control">
+          <label for="calendarMode">Calendar Mode</label>
+          <select id="calendarMode">
+            <option value="simulonic">Simulonic (36×30)</option>
+            <option value="gregorian">Gregorian‑normalized (12×90)</option>
+            <option value="astral">Astral (36×30)</option>
+          </select>
+        </div>
+        <div id="calendar" class="calendar" style="display:flex; flex-wrap:wrap; gap:12px;"></div>
       </div>
     </aside>
 
@@ -329,8 +347,53 @@
     showBounds.addEventListener('change', render);
     showMars.addEventListener('change', render);
 
+    // ===== 1080‑Day Calendar integration =====
+    const simulonicMonths = Array.from({length:36}, (_,i)=>`Month ${i+1}`);
+    const gregorianMonths = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const astralMonths = ['Waxing','Waning','Half','Full','Quarter','Rise','Fall','Olympus Mons','Ursa Major','Draco','Centauri','Proxima','Carina','Lyra','Serpens','Apollo','Planck','Einstein','Schrodinger','Cygnus','Sirius','Antares','Canopus','Poincare','Mendel','Regulus','Procyon','Lynx','Eridanus','Cassiopeia','Crux','Magellanic','Kepler','Hubble','Newton','Andromeda'];
+
+    function calendarMonthsFor(mode){
+      if(mode==='gregorian') return gregorianMonths; if(mode==='astral') return astralMonths; return simulonicMonths;
+    }
+
+    function absoluteDayFrom(monthIndex, dayIndex, mode){
+      const months = calendarMonthsFor(mode); const daysPerMonth = Math.floor(1080 / months.length);
+      return monthIndex * daysPerMonth + (dayIndex - 1); // 0‑based
+    }
+
+    function renderCalendar(){
+      const container = document.getElementById('calendar'); container.innerHTML='';
+      const mode = document.getElementById('calendarMode').value; const months = calendarMonthsFor(mode);
+      const daysPerMonth = Math.floor(1080 / months.length);
+      months.forEach((name, i)=>{
+        const m = document.createElement('div'); m.className='month';
+        const h = document.createElement('h3'); h.textContent = name; m.appendChild(h);
+        const grid = document.createElement('div'); grid.className='days';
+        for(let d=1; d<=daysPerMonth; d++){
+          const cell = document.createElement('div'); cell.className='day'; cell.textContent=d; cell.title=`Day ${d} of ${name}`;
+          cell.onclick = ()=>{
+            // map to model
+            const basisTarget = (mode==='gregorian') ? '1290' : '1080';
+            basisSel.value = basisTarget; updateRanges(); // switch basis to 1080/1290 geometry
+            playing = false; // stop animation
+            const abs = absoluteDayFrom(i,d,mode);
+            daySlider.value = Math.max(0, Math.min(currentYearLength(), abs));
+            theta = dayToTheta(parseInt(daySlider.value,10));
+            // highlight selection
+            document.querySelectorAll('.calendar .day.selected').forEach(el=>el.classList.remove('selected'));
+            cell.classList.add('selected');
+            render();
+          };
+          grid.appendChild(cell);
+        }
+        m.appendChild(grid); container.appendChild(m);
+      });
+    }
+
+    document.getElementById('calendarMode').addEventListener('change', ()=>{ renderCalendar(); });
+
     // init
-    updateRanges(); updateSeasonLock(); render();
+    updateRanges(); updateSeasonLock(); render(); renderCalendar();
   </script>
 </body>
 </html>
